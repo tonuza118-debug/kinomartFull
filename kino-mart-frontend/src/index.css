@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-line;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-base text-ink font-body antialiased;
+    background-image:
+      radial-gradient(60rem 30rem at 85% -10%, rgba(233,255,0,0.06), transparent 60%),
+      radial-gradient(50rem 30rem at -10% 20%, rgba(233,255,0,0.04), transparent 60%);
+    background-attachment: fixed;
+  }
+  h1, h2, h3, h4 {
+    @apply font-heading tracking-tight;
+  }
+  ::selection {
+    background: #E9FF00;
+    color: #0B0B0B;
+  }
+  /* Respect reduced motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+  :focus-visible {
+    outline: 2px solid #E9FF00;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/[0.04] backdrop-blur-md border border-white/10;
+  }
+  .glass-card {
+    @apply glass rounded-2xl shadow-glass;
+  }
+  .neon-text {
+    color: #E9FF00;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-neon px-6 py-3
+      font-heading font-semibold text-base tracking-wide text-black
+      transition-all duration-300 hover:shadow-neon hover:brightness-105 active:scale-[0.97]
+      disabled:opacity-40 disabled:pointer-events-none;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-white/15 bg-white/[0.03]
+      px-6 py-3 font-heading font-medium text-ink backdrop-blur-md
+      transition-all duration-300 hover:border-neon/60 hover:text-neon active:scale-[0.97];
+  }
+  .btn-icon {
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.03]
+      text-ink transition-all duration-300 hover:border-neon/50 hover:text-neon;
+  }
+  .container-px {
+    @apply px-4 sm:px-6 lg:px-10;
+  }
+  .section-eyebrow {
+    @apply font-display text-xs font-semibold uppercase tracking-[0.35em] text-neon;
+  }
+  .skeleton {
+    @apply relative overflow-hidden bg-white/5 bg-[length:200%_100%] bg-gradient-to-r from-white/5 via-white/10 to-white/5 animate-shimmer;
+  }
+  .price-strike {
+    @apply text-ink-faint line-through decoration-ink-faint/60;
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .input-field {
+    @apply w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-ink
+      placeholder:text-ink-faint transition-colors focus:border-neon/60 focus:outline-none;
+  }
+}
