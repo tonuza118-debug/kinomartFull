@@ -97,6 +97,45 @@ New `ContactMessage` model, registered read-only in `/admin/` (with `is_resolved
 ### A note on `on_delete` choices
 `ContactMessage.user` uses `on_delete=CASCADE` rather than the `SET_NULL` pattern used elsewhere (e.g. `Order.user`). The difference: an order's other fields (address, items, totals) stay meaningful business records after the account is gone, so `Order` keeps its row and just loses the `user` link. A contact message has no such ongoing purpose once its account is deleted — it's just a support ticket with nowhere to route it — so it cascades away instead of accumulating as orphaned rows.
 
+### Online payment (SSLCommerz — cards, bKash, Nagad, Rocket, internet banking)
+SSLCommerz is a payment aggregator: one integration gets you cards (VISA/Mastercard/Amex),
+all the major mobile wallets, and internet banking, instead of integrating each one separately.
+Reference: https://developer.sslcommerz.com/doc/v4/
+
+At checkout the customer now picks **Cash on Delivery** or **Online Payment**. For online:
+1. The order is created as usual (`payment_method: 'online'`, `is_paid: false`).
+2. `POST /api/payments/initiate/` `{order_id, phone}` opens an SSLCommerz session and returns
+   a `payment_url` the browser is redirected to. Like order tracking, `phone` must match the
+   order's checkout number — otherwise anyone who knew an order id could trigger a payment
+   session against someone else's order.
+3. After paying, SSLCommerz redirects the browser to `/api/payments/success|fail|cancel/`,
+   which **re-confirms the transaction server-to-server** via SSLCommerz's Validation API
+   before trusting it (the redirect alone is just the browser bouncing back and proves
+   nothing on its own — this is also why the amount is checked against what we expect).
+   The backend then redirects on to the frontend's `/payment-result` page.
+4. `POST /api/payments/ipn/` is the same validation logic, but triggered server-to-server by
+   SSLCommerz directly rather than via the customer's browser — the authoritative path for
+   cases where the customer's connection drops before they're redirected back.
+
+New `Payment` model (one row per attempt, `on_delete=CASCADE` on `order` — a payment record
+is meaningless once its order is gone, so it cascades rather than orphaning, same reasoning
+as `OrderItem`/`CartItem`). `Order` gained `payment_method` and `is_paid`. All visible/editable
+(payments read-only) in `/admin/`.
+
+**Configuration** (`kino_mart_backend/settings.py`, overridable via real environment
+variables — `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD`, `SSLCOMMERZ_SANDBOX`,
+`BACKEND_URL`, `FRONTEND_URL`): defaults to SSLCommerz's public sandbox demo store
+(`testbox` / `qwerty`), which works immediately against `sandbox.sslcommerz.com` with no
+signup — use the sandbox test cards/OTP listed on their docs page to try it end to end.
+**For production**, register a live store at https://signup.sslcommerz.com/register and set
+real values for those variables (never commit live credentials) plus `SSLCOMMERZ_SANDBOX=False`.
+
+*Note on this environment:* `sandbox.sslcommerz.com` isn't reachable from the sandbox this
+was built in, so the initiate/success/fail/cancel/IPN flow was verified with the SSLCommerz
+API calls mocked (session creation, validation, amount-mismatch rejection, idempotency) rather
+than a live round trip — worth a real end-to-end smoke test once you deploy somewhere with
+outbound internet access.
+
 ## Everything's still visible/manageable in Django admin
 
 Rather than build a parallel custom "admin dashboard" in React, the new models (`Wishlist`,

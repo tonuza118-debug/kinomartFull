@@ -10,6 +10,7 @@ import { useCart } from '../context/CartContext.jsx'
 import CountdownTimer from '../components/ui/CountdownTimer.jsx'
 import ProductCard from '../components/ui/ProductCard.jsx'
 import ProductGridSkeleton from '../components/ui/ProductGridSkeleton.jsx'
+import ShareButton from '../components/ui/ShareButton.jsx'
 
 export default function ProductDetail() {
   const { slug } = useParams()
@@ -73,12 +74,27 @@ export default function ProductDetail() {
   const avgRating = product.reviews?.length
     ? (product.reviews.reduce((s, r) => s + r.rating, 0) / product.reviews.length).toFixed(1)
     : null
+  const shareUrl = `${window.location.origin}/product/${product.slug}`
+  const shareImage = mediaUrl(images[0]?.image)
 
   return (
     <div className="container-px mx-auto max-w-7xl py-10">
       <Helmet>
         <title>{product.title} — Kino Mart</title>
         <meta name="description" content={product.short_description || product.title} />
+        {/* Open Graph + Twitter Card — what makes a shared link show a proper
+            title/image/price instead of a bare URL on Facebook, WhatsApp, X, etc. */}
+        <meta property="og:type" content="product" />
+        <meta property="og:title" content={product.title} />
+        <meta property="og:description" content={product.short_description || product.title} />
+        <meta property="og:url" content={shareUrl} />
+        {shareImage && <meta property="og:image" content={shareImage} />}
+        <meta property="product:price:amount" content={product.price} />
+        <meta property="product:price:currency" content="BDT" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={product.title} />
+        <meta name="twitter:description" content={product.short_description || product.title} />
+        {shareImage && <meta name="twitter:image" content={shareImage} />}
       </Helmet>
 
       <div className="mb-6 flex items-center gap-1 text-xs text-ink-faint">
@@ -213,6 +229,11 @@ export default function ProductDetail() {
             >
               <Heart size={18} fill={wishlisted ? 'currentColor' : 'none'} />
             </button>
+            <ShareButton
+              title={product.title}
+              text={`Check out ${product.title} on Kino Mart — ${formatBDT(product.price)}`}
+              url={shareUrl}
+            />
           </div>
 
           <Link

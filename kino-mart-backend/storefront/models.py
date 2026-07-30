@@ -23,6 +23,7 @@ class SiteSetting(models.Model):
 
 class Order(models.Model):
     STATUS_CHOICES = [('pending', 'Pending'), ('confirmed', 'Confirmed'), ('shipped', 'Shipped'), ('delivered', 'Delivered'), ('cancelled', 'Cancelled')]
+    PAYMENT_METHOD_CHOICES = [('cod', 'Cash on delivery'), ('online', 'Online payment')]
     # Nullable: checkout stays guest-friendly. Set automatically from the request
     # when the customer is logged in, so /api/orders/mine/ can filter by it.
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
@@ -34,6 +35,8 @@ class Order(models.Model):
     shipping_charge = models.DecimalField(max_digits=8, decimal_places=2)
     grand_total = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    payment_method = models.CharField(max_length=10, choices=PAYMENT_METHOD_CHOICES, default='cod')
+    is_paid = models.BooleanField(default=False, help_text='Set once an online payment is confirmed by SSLCommerz. Always False for COD.')
     created_at = models.DateTimeField(auto_now_add=True)
     class Meta: ordering = ['-created_at']
     def __str__(self): return f'Order #{self.pk} - {self.full_name}'
@@ -46,6 +49,34 @@ class OrderItem(models.Model):
     selected_color = models.CharField(max_length=100, blank=True)
     quantity = models.PositiveIntegerField(default=1)
     image = models.CharField(max_length=500, blank=True)
+
+
+class Payment(models.Model):
+    """One row per SSLCommerz payment attempt against an Order.
+
+    A payment record only exists to reconcile against its order — a row with
+    no order left to reconcile has nothing useful left in it, so this
+    cascades with the order (same reasoning as OrderItem/CartItem) rather
+    than being kept around as an orphan.
+    """
+    STATUS_CHOICES = [
+        ('initiated', 'Initiated'),   # session created at SSLCommerz, customer redirected
+        ('valid', 'Valid'),            # confirmed paid (verified via SSLCommerz's validation API)
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
+        ('expired', 'Expired'),
+    ]
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='payments')
+    tran_id = models.CharField(max_length=50, unique=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='initiated')
+    method = models.CharField(max_length=100, blank=True, help_text="Channel used, as reported by SSLCommerz, e.g. 'bKash', 'Nagad', 'VISA-Brac bank'.")
+    val_id = models.CharField(max_length=100, blank=True)
+    bank_tran_id = models.CharField(max_length=100, blank=True)
+    validated_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    class Meta: ordering = ['-created_at']
+    def __str__(self): return f'{self.tran_id} - {self.status}'
 
 class Wishlist(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='wishlist')

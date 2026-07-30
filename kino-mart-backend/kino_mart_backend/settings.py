@@ -12,34 +12,41 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from datetime import timedelta
 from pathlib import Path
+import os
 
-import environ
+import dj_database_url
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# --------------------------------------------------------------------------
-# Environment
-# --------------------------------------------------------------------------
-# Everything that differs between dev and production (secret key, debug flag,
-# hosts, database, cors) is read from the environment instead of being
-# hardcoded. `.env` (git-ignored) supplies these locally / in this sandbox;
-# in a real deployment set the same variables on the host/platform instead of
-# shipping a .env file. `.env.example` documents every variable.
-env = environ.Env(
-    DJANGO_DEBUG=(bool, False),
-)
-environ.Env.read_env(str(BASE_DIR / '.env'))
+# Loads .env for local development. In production (Render) there is no .env
+# file — real values are set as environment variables in the dashboard, and
+# this call is a harmless no-op.
+load_dotenv(BASE_DIR / '.env')
 
+
+def env_bool(name, default=False):
+    return os.environ.get(name, str(default)).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def env_list(name, default=''):
+    raw = os.environ.get(name, default)
+    return [item.strip() for item in raw.split(',') if item.strip()]
+
+
+# --- Core / security ---
 # SECURITY WARNING: keep the secret key used in production secret!
-# No hardcoded fallback on purpose — if DJANGO_SECRET_KEY isn't set, fail
-# loudly rather than silently booting with a known-public dev key.
-SECRET_KEY = env('DJANGO_SECRET_KEY', default='django-insecure-_0c0-jn*zvtqw)cmmkzedcf#k0p4iu5c2d6joyuz#ohg-@**w0')
+# No hardcoded fallback in production — if SECRET_KEY isn't set, fail loudly
+# rather than silently running with a known/insecure key.
+DEBUG = env_bool('DJANGO_DEBUG', False)
+SECRET_KEY = os.environ.get('SECRET_KEY') or (
+    'django-insecure-dev-only-key-CHANGE-ME' if DEBUG else None
+)
+if not SECRET_KEY:
+    raise RuntimeError('SECRET_KEY environment variable is required when DJANGO_DEBUG=False')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = env('DJANGO_DEBUG')
-
-ALLOWED_HOSTS = env.list('DJANGO_ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
+ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1')
 
 
 # Application definition
@@ -55,6 +62,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
     'django_filters',
+    'storages',
     'catalog',
     'storefront',
     'accounts',
@@ -94,13 +102,27 @@ WSGI_APPLICATION = 'kino_mart_backend.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
+# DATABASE_URL (e.g. the Neon connection string) is read from the environment.
+# Falls back to local sqlite when it isn't set, so `manage.py runserver` still
+# works out of the box for local development.
 
-# Set DATABASE_URL (e.g. postgres://user:pass@host:5432/dbname) in production.
-# Without it, falls back to the local sqlite file — fine for dev, not for a
-# real deployment (no concurrent writers, lives on local disk only).
-DATABASES = {
-    'default': env.db('DATABASE_URL', default=f'sqlite:///{BASE_DIR / "db.sqlite3"}')
-}
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=True,
+        )
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -150,49 +172,60 @@ STORAGES = {
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS_ALLOW_ALL_ORIGINS=True was previously hardcoded, which made
-# CORS_ALLOWED_ORIGINS meaningless (any origin could call the API with
-# credentials). It now defaults to False and must be explicitly opted into
-# via env for a throwaway/demo deployment.
-CORS_ALLOWED_ORIGINS = env.list(
-    'CORS_ALLOWED_ORIGINS',
-    default=['http://localhost:5173', 'http://localhost:4173'],
-)
-# CORS_ALLOWED_ORIGINS only does exact matches — wildcard subdomains (e.g. a
-# preview-deploy platform like *.monkeycode-ai.live) need a regex instead.
-CORS_ALLOWED_ORIGIN_REGEXES = env.list('CORS_ALLOWED_ORIGIN_REGEXES', default=[])
-CORS_ALLOW_ALL_ORIGINS = env.bool('CORS_ALLOW_ALL_ORIGINS', default=False)
+CORS_ALLOWED_ORIGINS = env_list('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://localhost:4173')
+# Never leave this True in production — it defeats CORS_ALLOWED_ORIGINS entirely.
+CORS_ALLOW_ALL_ORIGINS = env_bool('CORS_ALLOW_ALL_ORIGINS', DEBUG)
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+# --- Media storage: Cloudflare R2 (S3-compatible) in production, local disk in dev ---
+# Set USE_R2_STORAGE=True plus the R2_* vars below to switch product/brand/banner
+# images over to R2. Leave unset locally and Django serves media from ./media
+# exactly as before.
+USE_R2_STORAGE = env_bool('USE_R2_STORAGE', False)
 
-CSRF_TRUSTED_ORIGINS = env.list(
+if USE_R2_STORAGE:
+    STORAGES['default'] = {'BACKEND': 'storages.backends.s3.S3Storage'}
+
+    AWS_ACCESS_KEY_ID = os.environ.get('R2_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = os.environ.get('R2_SECRET_ACCESS_KEY')
+    AWS_STORAGE_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME')
+    AWS_S3_ENDPOINT_URL = os.environ.get('R2_ENDPOINT_URL')
+    AWS_S3_REGION_NAME = 'auto'
+    AWS_S3_ADDRESSING_STYLE = 'virtual'
+    AWS_S3_SIGNATURE_VERSION = 's3v4'
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_DEFAULT_ACL = None
+    AWS_QUERYSTRING_AUTH = False  # public bucket — no need for signed URLs
+
+    # Optional: serve media through your own R2 public/custom domain
+    # (e.g. images.kinomart.com, or the bucket's r2.dev URL) instead of the raw
+    # S3 endpoint. Set R2_PUBLIC_DOMAIN to enable this.
+    R2_PUBLIC_DOMAIN = os.environ.get('R2_PUBLIC_DOMAIN')
+    if R2_PUBLIC_DOMAIN:
+        AWS_S3_CUSTOM_DOMAIN = R2_PUBLIC_DOMAIN
+        MEDIA_URL = f'https://{R2_PUBLIC_DOMAIN}/'
+    else:
+        MEDIA_URL = f'{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/'
+else:
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
+
+CSRF_TRUSTED_ORIGINS = env_list(
     'CSRF_TRUSTED_ORIGINS',
-    default=[
-        'http://localhost:5173',
-        'http://localhost:8000',
-        'http://127.0.0.1:8000',
-    ],
+    'http://localhost:5173,http://localhost:8000,http://127.0.0.1:8000',
 )
-
-# Cookies/HSTS/SSL-redirect are only forced on when DEBUG is off, so local
-# dev (plain http://localhost) keeps working without extra flags.
 CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SAMESITE = 'Lax'
 
+# --- HTTPS / HSTS (Render terminates TLS and forwards via X-Forwarded-Proto) ---
 if not DEBUG:
-    SECURE_SSL_REDIRECT = env.bool('DJANGO_SECURE_SSL_REDIRECT', default=True)
-    SECURE_HSTS_SECONDS = env.int('DJANGO_SECURE_HSTS_SECONDS', default=60 * 60 * 24 * 30)
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = env_bool('SECURE_SSL_REDIRECT', True)
+    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 7  # 1 week to start; raise once confident
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
-    X_FRAME_OPTIONS = 'DENY'
-    # Needed when running behind a reverse proxy/load balancer that
-    # terminates TLS (Render, Railway, Fly, Heroku, nginx, etc.) — without
-    # this, Django sees every request as plain http and SSL redirect loops.
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
@@ -215,3 +248,20 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': False,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
+
+# --- SSLCommerz (online payments: cards, bKash, Nagad, Rocket, internet banking) ---
+# Sandbox defaults below are SSLCommerz's public demo store credentials (store_id
+# "testbox" / password "qwerty") — they work out of the box against
+# sandbox.sslcommerz.com with no signup, which is why they're safe to leave as
+# literal defaults here rather than requiring a .env entry to run at all.
+# For production: register a live store at https://signup.sslcommerz.com/register,
+# then set SSLCOMMERZ_STORE_ID / SSLCOMMERZ_STORE_PASSWORD / SSLCOMMERZ_SANDBOX=False
+# as real environment variables — never commit live credentials to this file.
+SSLCOMMERZ_STORE_ID = os.environ.get('SSLCOMMERZ_STORE_ID', 'testbox')
+SSLCOMMERZ_STORE_PASSWORD = os.environ.get('SSLCOMMERZ_STORE_PASSWORD', 'qwerty')
+SSLCOMMERZ_SANDBOX = os.environ.get('SSLCOMMERZ_SANDBOX', 'True') == 'True'
+
+# Used to build the absolute callback URLs SSLCommerz redirects/posts to, and to
+# send the customer back to the right frontend origin once payment is done.
+BACKEND_URL = os.environ.get('BACKEND_URL', 'http://localhost:8000')
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')

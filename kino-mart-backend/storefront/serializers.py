@@ -24,8 +24,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         model = Order
         # 'id' and 'status' are read-only here (not accepted on input) but ARE
         # returned in the response, so the frontend can show an order number.
-        fields = ['id', 'full_name', 'phone_number', 'district', 'address', 'subtotal', 'shipping_charge', 'grand_total', 'status', 'items']
-        read_only_fields = ['id', 'status']
+        fields = ['id', 'full_name', 'phone_number', 'district', 'address', 'subtotal', 'shipping_charge', 'grand_total', 'status', 'payment_method', 'is_paid', 'items']
+        read_only_fields = ['id', 'status', 'is_paid']
     def create(self, validated_data):
         items_data = validated_data.pop('items')
         order = Order.objects.create(**validated_data)
@@ -40,17 +40,17 @@ class OrderListSerializer(serializers.ModelSerializer):
     district = serializers.StringRelatedField()
     class Meta:
         model = Order
-        fields = ['id', 'full_name', 'phone_number', 'district', 'address', 'subtotal', 'shipping_charge', 'grand_total', 'status', 'created_at', 'items']
+        fields = ['id', 'full_name', 'phone_number', 'district', 'address', 'subtotal', 'shipping_charge', 'grand_total', 'status', 'payment_method', 'is_paid', 'created_at', 'items']
 
 
 class OrderTrackSerializer(serializers.ModelSerializer):
     """Public, guest-facing shape for GET /api/orders/track/ — same info as
-    OrderListSerializer but reachable without a login, by phone + order id."""
+    OrderListSerializer but reachable without a login, by phone number."""
     items = OrderItemSerializer(many=True, read_only=True)
     district = serializers.StringRelatedField()
     class Meta:
         model = Order
-        fields = ['id', 'full_name', 'district', 'address', 'subtotal', 'shipping_charge', 'grand_total', 'status', 'created_at', 'items']
+        fields = ['id', 'full_name', 'district', 'address', 'subtotal', 'shipping_charge', 'grand_total', 'status', 'payment_method', 'is_paid', 'created_at', 'items']
 
 
 class ContactMessageSerializer(serializers.ModelSerializer):

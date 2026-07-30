@@ -9,6 +9,7 @@ import Shop from './pages/Shop.jsx'
 import ProductDetail from './pages/ProductDetail.jsx'
 import Checkout from './pages/Checkout.jsx'
 import OrderSuccess from './pages/OrderSuccess.jsx'
+import PaymentResult from './pages/PaymentResult.jsx'
 import Wishlist from './pages/Wishlist.jsx'
 import Brands from './pages/Brands.jsx'
 import Login from './pages/Login.jsx'
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="/product/:slug" element={<ProductDetail />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/order-success" element={<OrderSuccess />} />
+          <Route path="/payment-result" element={<PaymentResult />} />
           <Route path="/wishlist" element={<Wishlist />} />
           <Route path="/brands" element={<Brands />} />
           <Route path="/login" element={<Login />} />

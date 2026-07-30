@@ -12,6 +12,11 @@ from storefront.views import (
     CartView,
     CouponValidateView,
     ContactMessageView,
+    PaymentInitiateView,
+    PaymentSuccessView,
+    PaymentFailView,
+    PaymentCancelView,
+    PaymentIPNView,
 )
 
 router = DefaultRouter()
@@ -30,6 +35,11 @@ urlpatterns = [
     path('api/cart/', CartView.as_view(), name='cart'),
     path('api/coupons/validate/', CouponValidateView.as_view(), name='coupon-validate'),
     path('api/contact/', ContactMessageView.as_view(), name='contact-message'),
+    path('api/payments/initiate/', PaymentInitiateView.as_view(), name='payment-initiate'),
+    path('api/payments/success/', PaymentSuccessView.as_view(), name='payment-success'),
+    path('api/payments/fail/', PaymentFailView.as_view(), name='payment-fail'),
+    path('api/payments/cancel/', PaymentCancelView.as_view(), name='payment-cancel'),
+    path('api/payments/ipn/', PaymentIPNView.as_view(), name='payment-ipn'),
     path('api/', include(router.urls)),
 ]
 if settings.DEBUG:

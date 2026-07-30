@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { Loader2, Tag, X } from 'lucide-react'
 import { getDistricts } from '../api/catalog'
 import { createOrder, validateCoupon } from '../api/storefront'
+import { initiatePayment } from '../api/payments'
 import { useCart } from '../context/CartContext.jsx'
 import { formatBDT } from '../lib/format'
 import { mediaUrl } from '../api/client'
@@ -40,6 +41,7 @@ export default function Checkout() {
   const [couponCode, setCouponCode] = useState('')
   const [applyingCoupon, setApplyingCoupon] = useState(false)
   const [appliedCoupon, setAppliedCoupon] = useState(null) // { code, discount }
+  const [paymentMethod, setPaymentMethod] = useState('cod') // 'cod' | 'online'
 
   useEffect(() => {
     getDistricts().then(setDistricts).catch(() => setDistricts([]))
@@ -97,6 +99,7 @@ export default function Checkout() {
         subtotal: subtotal.toFixed(2),
         shipping_charge: shipping.toFixed(2),
         grand_total: grandTotal.toFixed(2),
+        payment_method: paymentMethod,
         items: lineItems.map((i) => ({
           product: i.slug,
           title: i.title,
@@ -106,6 +109,18 @@ export default function Checkout() {
           image: i.image || '',
         })),
       })
+
+      if (paymentMethod === 'online') {
+        // Stashed so the payment-result page (which the gateway redirects
+        // back to as a fresh page load, losing any router state) can look
+        // this order up again by phone once payment completes.
+        sessionStorage.setItem('kinomart_pending_order', JSON.stringify({ orderId: order.id, phone: form.phone_number.trim() }))
+        const { payment_url } = await initiatePayment(order.id, form.phone_number.trim())
+        if (!buyNow) await clearCart()
+        window.location.href = payment_url
+        return
+      }
+
       if (!buyNow) await clearCart()
       navigate('/order-success', { state: { order } })
     } catch (err) {
@@ -216,14 +231,33 @@ export default function Checkout() {
             )}
           </div>
 
-          <div className="glass-card flex items-center gap-3 p-4 text-sm text-ink-muted">
-            <span className="rounded-full bg-neon/10 px-2.5 py-1 text-xs font-bold text-neon">COD</span>
-            Pay in cash when your order arrives at the door.
+          <div>
+            <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-faint">Payment method</span>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('cod')}
+                className={`glass-card flex items-start gap-3 p-4 text-left text-sm transition ${paymentMethod === 'cod' ? 'ring-2 ring-neon' : ''}`}
+              >
+                <span className="shrink-0 rounded-full bg-neon/10 px-2.5 py-1 text-xs font-bold text-neon">COD</span>
+                <span className="text-ink-muted">Pay in cash when your order arrives.</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('online')}
+                className={`glass-card flex items-start gap-3 p-4 text-left text-sm transition ${paymentMethod === 'online' ? 'ring-2 ring-neon' : ''}`}
+              >
+                <span className="shrink-0 rounded-full bg-neon/10 px-2.5 py-1 text-xs font-bold text-neon">Online</span>
+                <span className="text-ink-muted">bKash, Nagad, Rocket, cards & internet banking.</span>
+              </button>
+            </div>
           </div>
 
           <button disabled={submitting} className="btn-primary w-full">
             {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
-            {submitting ? 'Placing order…' : `Place order · ${formatBDT(grandTotal)}`}
+            {submitting
+              ? paymentMethod === 'online' ? 'Redirecting to payment…' : 'Placing order…'
+              : paymentMethod === 'online' ? `Pay online · ${formatBDT(grandTotal)}` : `Place order · ${formatBDT(grandTotal)}`}
           </button>
         </form>
 

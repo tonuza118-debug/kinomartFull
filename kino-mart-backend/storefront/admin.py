@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import PromoBanner, SiteSetting, Order, OrderItem, Wishlist, Cart, CartItem, Coupon, ContactMessage
+from .models import PromoBanner, SiteSetting, Order, OrderItem, Payment, Wishlist, Cart, CartItem, Coupon, ContactMessage
 
 @admin.register(PromoBanner)
 class PromoBannerAdmin(admin.ModelAdmin):
@@ -14,12 +14,24 @@ class SiteSettingAdmin(admin.ModelAdmin):
 class OrderItemInline(admin.TabularInline):
     model = OrderItem; extra = 0; readonly_fields = ('product','title','price','selected_color','quantity','image'); can_delete = False
 
+class PaymentInline(admin.TabularInline):
+    model = Payment; extra = 0; can_delete = False
+    readonly_fields = ('tran_id', 'amount', 'status', 'method', 'val_id', 'bank_tran_id', 'validated_at', 'created_at')
+
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ('id','full_name','user','phone_number','district','grand_total','status','created_at')
-    list_filter = ('status','district')
+    list_display = ('id','full_name','user','phone_number','district','grand_total','payment_method','is_paid','status','created_at')
+    list_filter = ('status','payment_method','is_paid','district')
     search_fields = ('full_name','phone_number')
-    inlines = [OrderItemInline]
+    inlines = [OrderItemInline, PaymentInline]
+
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = ('tran_id', 'order', 'amount', 'status', 'method', 'created_at')
+    list_filter = ('status',)
+    search_fields = ('tran_id', 'val_id', 'bank_tran_id', 'order__full_name', 'order__phone_number')
+    readonly_fields = ('order', 'tran_id', 'amount', 'status', 'method', 'val_id', 'bank_tran_id', 'validated_at', 'created_at')
+    def has_add_permission(self, request): return False
 
 @admin.register(Wishlist)
 class WishlistAdmin(admin.ModelAdmin):
