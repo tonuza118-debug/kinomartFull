@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 
 import requests
 from django.conf import settings
+from django.db.models import Prefetch
 from django.http import HttpResponseRedirect
 from django.utils import timezone
 from rest_framework import viewsets, mixins, status, permissions
@@ -109,6 +110,15 @@ class CartView(APIView):
 
     def get_cart(self, request):
         cart, _ = Cart.objects.get_or_create(user=request.user)
+        # Without this, CartSerializer triggers a separate query per line item
+        # (item.product) plus another per product's brand — a cart of N items
+        # did roughly 2N+2 queries instead of 2.
+        cart = Cart.objects.prefetch_related(
+            Prefetch(
+                'items',
+                queryset=CartItem.objects.select_related('product', 'product__brand'),
+            )
+        ).get(pk=cart.pk)
         return cart
 
     def get(self, request):

@@ -11,7 +11,9 @@ export default function ProductRail({ eyebrow, title, subtitle, params, viewAllT
 
   useEffect(() => {
     let alive = true
-    getProducts(params)
+    // Rails only ever show a handful of cards at once (no full pagination UI),
+    // so there's no reason to fetch+render the full default page of 20.
+    getProducts({ page_size: 8, ...params })
       .then((data) => alive && setProducts(data.results || []))
       .catch(() => alive && setProducts([]))
     return () => {

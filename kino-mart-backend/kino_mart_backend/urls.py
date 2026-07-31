@@ -23,7 +23,7 @@ router = DefaultRouter()
 router.register('categories', CategoryViewSet)
 router.register('brands', BrandViewSet)
 router.register('districts', DistrictViewSet)
-router.register('products', ProductViewSet)
+router.register('products', ProductViewSet, basename='product')
 router.register('banners', PromoBannerViewSet, basename='banner')
 router.register('settings', SiteSettingViewSet, basename='setting')
 router.register('orders', OrderViewSet, basename='order')  # includes /api/orders/mine/

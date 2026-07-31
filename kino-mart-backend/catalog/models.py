@@ -1,5 +1,7 @@
 from django.db import models
 
+from .imaging import process_image_field
+
 class Category(models.Model):
     name = models.CharField(max_length=100)
     slug = models.SlugField(unique=True)
@@ -7,6 +9,9 @@ class Category(models.Model):
     order = models.PositiveIntegerField(default=0)
     class Meta: ordering = ['order', 'name']
     def __str__(self): return self.name
+    def save(self, *args, **kwargs):
+        process_image_field(self.image, max_dimension=800, quality=85)
+        super().save(*args, **kwargs)
 
 class Brand(models.Model):
     name = models.CharField(max_length=100)
@@ -14,6 +19,9 @@ class Brand(models.Model):
     order = models.PositiveIntegerField(default=0)
     class Meta: ordering = ['order', 'name']
     def __str__(self): return self.name
+    def save(self, *args, **kwargs):
+        process_image_field(self.logo, max_dimension=400, quality=85)
+        super().save(*args, **kwargs)
 
 class District(models.Model):
     name = models.CharField(max_length=100)
@@ -43,18 +51,29 @@ class Product(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     class Meta: ordering = ['-created_at']
     def __str__(self): return self.title
+    def save(self, *args, **kwargs):
+        # Thumbnails only ever render small (product grids/cards), so they're
+        # capped tighter than the full product images below.
+        process_image_field(self.thumbnail, max_dimension=600, quality=80)
+        super().save(*args, **kwargs)
 
 class ProductImage(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='images')
     image = models.ImageField(upload_to='products/images/')
     order = models.PositiveIntegerField(default=0)
     class Meta: ordering = ['order']
+    def save(self, *args, **kwargs):
+        process_image_field(self.image, max_dimension=1600, quality=85)
+        super().save(*args, **kwargs)
 
 class ProductGalleryImage(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='gallery')
     image = models.ImageField(upload_to='products/gallery/')
     order = models.PositiveIntegerField(default=0)
     class Meta: ordering = ['order']
+    def save(self, *args, **kwargs):
+        process_image_field(self.image, max_dimension=1600, quality=85)
+        super().save(*args, **kwargs)
 
 class ProductVariant(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='variants')

@@ -79,6 +79,10 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+if DEBUG:
+    # Prints per-request timing/query-count to the runserver console — local
+    # dev diagnostics only, never added in production.
+    MIDDLEWARE.append('kino_mart_backend.timing_middleware.RequestTimingMiddleware')
 
 ROOT_URLCONF = 'kino_mart_backend.urls'
 
@@ -102,27 +106,23 @@ WSGI_APPLICATION = 'kino_mart_backend.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-# DATABASE_URL (e.g. the Neon connection string) is read from the environment.
-# Falls back to local sqlite when it isn't set, so `manage.py runserver` still
-# works out of the box for local development.
+# This project always uses the Postgres DB at DATABASE_URL (Neon) — no sqlite
+# fallback. Set DATABASE_URL in .env locally and in the Render dashboard for
+# production; both point at the same database unless you deliberately change it.
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
+if not DATABASE_URL:
+    raise RuntimeError(
+        'DATABASE_URL environment variable is required (Postgres/Neon connection string).'
+    )
 
-if DATABASE_URL:
-    DATABASES = {
-        'default': dj_database_url.parse(
-            DATABASE_URL,
-            conn_max_age=600,
-            ssl_require=True,
-        )
-    }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
+DATABASES = {
+    'default': dj_database_url.parse(
+        DATABASE_URL,
+        conn_max_age=600,
+        ssl_require=True,
+    )
+}
 
 
 # Password validation
@@ -176,38 +176,40 @@ CORS_ALLOWED_ORIGINS = env_list('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,h
 # Never leave this True in production — it defeats CORS_ALLOWED_ORIGINS entirely.
 CORS_ALLOW_ALL_ORIGINS = env_bool('CORS_ALLOW_ALL_ORIGINS', DEBUG)
 
-# --- Media storage: Cloudflare R2 (S3-compatible) in production, local disk in dev ---
-# Set USE_R2_STORAGE=True plus the R2_* vars below to switch product/brand/banner
-# images over to R2. Leave unset locally and Django serves media from ./media
-# exactly as before.
-USE_R2_STORAGE = env_bool('USE_R2_STORAGE', False)
+# --- Media storage: Cloudflare R2 (S3-compatible) — always, no local-disk fallback ---
+# Same pattern as DATABASE_URL: these are required env vars, set in .env locally
+# and in the Render dashboard for production, both pointing at the same bucket.
+STORAGES['default'] = {'BACKEND': 'storages.backends.s3.S3Storage'}
 
-if USE_R2_STORAGE:
-    STORAGES['default'] = {'BACKEND': 'storages.backends.s3.S3Storage'}
+AWS_ACCESS_KEY_ID = os.environ.get('R2_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.environ.get('R2_SECRET_ACCESS_KEY')
+AWS_STORAGE_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME')
+AWS_S3_ENDPOINT_URL = os.environ.get('R2_ENDPOINT_URL')
 
-    AWS_ACCESS_KEY_ID = os.environ.get('R2_ACCESS_KEY_ID')
-    AWS_SECRET_ACCESS_KEY = os.environ.get('R2_SECRET_ACCESS_KEY')
-    AWS_STORAGE_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME')
-    AWS_S3_ENDPOINT_URL = os.environ.get('R2_ENDPOINT_URL')
-    AWS_S3_REGION_NAME = 'auto'
-    AWS_S3_ADDRESSING_STYLE = 'virtual'
-    AWS_S3_SIGNATURE_VERSION = 's3v4'
-    AWS_S3_FILE_OVERWRITE = False
-    AWS_DEFAULT_ACL = None
-    AWS_QUERYSTRING_AUTH = False  # public bucket — no need for signed URLs
+if not all([AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_STORAGE_BUCKET_NAME, AWS_S3_ENDPOINT_URL]):
+    raise RuntimeError(
+        'R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME and R2_ENDPOINT_URL '
+        'are all required (Cloudflare R2 is the only media storage backend).'
+    )
 
-    # Optional: serve media through your own R2 public/custom domain
-    # (e.g. images.kinomart.com, or the bucket's r2.dev URL) instead of the raw
-    # S3 endpoint. Set R2_PUBLIC_DOMAIN to enable this.
-    R2_PUBLIC_DOMAIN = os.environ.get('R2_PUBLIC_DOMAIN')
-    if R2_PUBLIC_DOMAIN:
-        AWS_S3_CUSTOM_DOMAIN = R2_PUBLIC_DOMAIN
-        MEDIA_URL = f'https://{R2_PUBLIC_DOMAIN}/'
-    else:
-        MEDIA_URL = f'{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/'
+AWS_S3_REGION_NAME = 'auto'
+AWS_S3_ADDRESSING_STYLE = 'virtual'
+AWS_S3_SIGNATURE_VERSION = 's3v4'
+AWS_S3_FILE_OVERWRITE = False
+AWS_DEFAULT_ACL = None
+AWS_QUERYSTRING_AUTH = False  # public bucket — no need for signed URLs
+
+# Optional: serve media through your own R2 public/custom domain
+# (e.g. images.kinomart.com, or the bucket's r2.dev URL) instead of the raw
+# S3 endpoint. Set R2_PUBLIC_DOMAIN to enable this.
+R2_PUBLIC_DOMAIN = os.environ.get('R2_PUBLIC_DOMAIN')
+if R2_PUBLIC_DOMAIN:
+    AWS_S3_CUSTOM_DOMAIN = R2_PUBLIC_DOMAIN
+    MEDIA_URL = f'https://{R2_PUBLIC_DOMAIN}/'
 else:
-    MEDIA_URL = '/media/'
-    MEDIA_ROOT = BASE_DIR / 'media'
+    MEDIA_URL = f'{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/'
+
+
 
 CSRF_TRUSTED_ORIGINS = env_list(
     'CSRF_TRUSTED_ORIGINS',

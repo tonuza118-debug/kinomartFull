@@ -89,6 +89,10 @@ class CartSerializer(serializers.ModelSerializer):
         fields = ['items', 'subtotal', 'updated_at']
 
     def get_subtotal(self, obj):
+        # obj.items.all() reuses the Prefetch set up in CartView.get_cart (same
+        # manager, no extra filtering), so this is served from the prefetch cache
+        # instead of firing a second query — and item.product is already
+        # select_related, so no per-item query either.
         return sum(item.product.price * item.quantity for item in obj.items.all())
 
 
